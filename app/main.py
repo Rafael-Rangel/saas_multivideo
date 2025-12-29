@@ -3,8 +3,6 @@ from fastapi.responses import HTMLResponse
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.api.routes import fetch, select, download, confirm, health, groups, n8n, sources, destinations
-from app.core.database import init_db
-import app.models  # Ensure models are registered
 
 setup_logging()
 settings = get_settings()
@@ -24,10 +22,6 @@ app.include_router(select.router, prefix=f"{settings.API_V1_STR}/select", tags=[
 app.include_router(download.router, prefix=f"{settings.API_V1_STR}/download", tags=["Download"])
 app.include_router(confirm.router, prefix=f"{settings.API_V1_STR}/confirm_publish", tags=["Confirm"])
 app.include_router(health.router, tags=["Health"])
-
-@app.on_event("startup")
-async def on_startup():
-    await init_db()
 
 @app.get("/", response_class=HTMLResponse)
 def root():
@@ -82,7 +76,7 @@ def root():
                 </div>
             </div>
             
-            <p style="margin-top: 2rem; color: #6b7280; font-size: 0.875rem;">Powered by FastAPI & Supabase</p>
+            <p style="margin-top: 2rem; color: #6b7280; font-size: 0.875rem;">Powered by FastAPI & n8n</p>
         </div>
     </body>
     </html>

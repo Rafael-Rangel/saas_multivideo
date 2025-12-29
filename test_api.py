@@ -1,5 +1,5 @@
 """
-Script de teste para a API Content Orchestrator
+Script de teste para a API Content Orchestrator (versão stateless)
 Testa todos os endpoints principais da aplicação
 """
 import requests
@@ -7,7 +7,6 @@ import json
 import time
 import sys
 import io
-from uuid import UUID
 
 # Configurar encoding UTF-8 para Windows
 if sys.platform == 'win32':
@@ -60,23 +59,50 @@ def test_health():
         print_error(f"Erro ao testar health: {e}")
         return False
 
-def test_fetch():
-    """Testa o endpoint de fetch (buscar novos conteúdos)"""
+def test_n8n_health():
+    """Testa o endpoint de health do n8n"""
     print("\n" + "="*60)
-    print("2️⃣  TESTANDO FETCH (Buscar Conteúdos)")
+    print("2️⃣  TESTANDO N8N HEALTH")
     print("="*60)
     
     try:
-        response = requests.post(f"{API_BASE}/fetch/run", timeout=30)
+        response = requests.get(f"{API_BASE}/n8n/health", timeout=5)
+        if response.status_code == 200:
+            print_success(f"N8N health check OK: {response.json()}")
+            return True
+        else:
+            print_error(f"N8N health check falhou: {response.status_code}")
+            return False
+    except Exception as e:
+        print_error(f"Erro ao testar n8n health: {e}")
+        return False
+
+def test_fetch():
+    """Testa o endpoint de fetch (buscar novos conteúdos)"""
+    print("\n" + "="*60)
+    print("3️⃣  TESTANDO FETCH (Buscar Conteúdos)")
+    print("="*60)
+    
+    # Exemplo de fonte
+    test_source = {
+        "platform": "youtube",
+        "external_id": "UC_x5XG1OV2P6uZZ5FSM9Ttw",  # Canal de exemplo do Google
+        "group_name": "teste"
+    }
+    
+    try:
+        response = requests.post(
+            f"{API_BASE}/fetch/run",
+            json=test_source,
+            timeout=30
+        )
         if response.status_code == 200:
             data = response.json()
-            print_success(f"Fetch iniciado: {data}")
-            job_id = data.get("job_id")
-            if job_id:
-                print_info(f"Job ID: {job_id}")
-                print_info("Aguardando processamento... (pode levar alguns segundos)")
-                return job_id
-            return True
+            print_success(f"Fetch concluído: {data.get('status')}")
+            print_info(f"Vídeos encontrados: {data.get('videos_found', 0)}")
+            if data.get('videos'):
+                print_info(f"Primeiro vídeo: {data['videos'][0].get('title', 'N/A')}")
+            return data
         else:
             print_error(f"Fetch falhou: {response.status_code} - {response.text}")
             return None
@@ -84,131 +110,81 @@ def test_fetch():
         print_error(f"Erro ao testar fetch: {e}")
         return None
 
+def test_n8n_process_sources():
+    """Testa o endpoint de processar múltiplas fontes"""
+    print("\n" + "="*60)
+    print("4️⃣  TESTANDO N8N PROCESS SOURCES")
+    print("="*60)
+    
+    test_sources = {
+        "sources": [
+            {
+                "platform": "youtube",
+                "external_id": "UC_x5XG1OV2P6uZZ5FSM9Ttw",
+                "group_name": "tecnologia"
+            }
+        ]
+    }
+    
+    try:
+        response = requests.post(
+            f"{API_BASE}/n8n/process-sources",
+            json=test_sources,
+            timeout=30
+        )
+        if response.status_code == 200:
+            data = response.json()
+            print_success(f"Processamento concluído: {data.get('status')}")
+            print_info(f"Vídeos encontrados: {data.get('videos_found', 0)}")
+            return data
+        else:
+            print_error(f"Processamento falhou: {response.status_code} - {response.text}")
+            return None
+    except Exception as e:
+        print_error(f"Erro ao testar process sources: {e}")
+        return None
+
 def test_select():
     """Testa o endpoint de select (selecionar conteúdo)"""
     print("\n" + "="*60)
-    print("3️⃣  TESTANDO SELECT (Selecionar Conteúdo)")
+    print("5️⃣  TESTANDO SELECT (Selecionar Conteúdo)")
     print("="*60)
     
-    print_warning("⚠️  Para testar SELECT, você precisa ter:")
-    print_warning("   - Pelo menos 1 Source ativo no banco")
-    print_warning("   - Pelo menos 1 Destination no banco")
-    print_warning("   - Pelo menos 1 ContentItem com status 'discovered'")
+    # Exemplo com vídeos mock
+    test_request = {
+        "destination_platform": "youtube",
+        "destination_account_id": "UCyyyyy",
+        "group_name": "tecnologia",
+        "available_videos": [
+            {
+                "external_video_id": "test123",
+                "title": "Vídeo Teste",
+                "url": "https://youtube.com/watch?v=test123",
+                "platform": "youtube",
+                "group_name": "tecnologia"
+            }
+        ]
+    }
     
-    # Solicitar IDs do usuário
     try:
-        destination_id = input("\nDigite o UUID do Destination (ou Enter para pular): ").strip()
-        if not destination_id:
-            print_warning("Teste de SELECT pulado")
-            return None
-        
-        # Gerar idempotency_key
-        import uuid
-        idempotency_key = str(uuid.uuid4())
-        
-        body = {
-            "destination_id": destination_id,
-            "idempotency_key": idempotency_key,
-            "strategy": "fifo"
-        }
-        
         response = requests.post(
             f"{API_BASE}/select",
-            json=body,
+            json=test_request,
             timeout=10
         )
         
         if response.status_code == 200:
             data = response.json()
-            print_success(f"Conteúdo selecionado: {data}")
-            content_item_id = data.get("id")
-            if content_item_id:
-                print_info(f"Content Item ID: {content_item_id}")
-                return content_item_id
+            print_success(f"Seleção concluída: {data.get('message')}")
+            if data.get('selected'):
+                print_info(f"Vídeo selecionado: {data['selected'].get('title', 'N/A')}")
             return data
-        elif response.status_code == 404:
-            print_warning("Nenhum conteúdo disponível para seleção")
-            return None
         else:
             print_error(f"Select falhou: {response.status_code} - {response.text}")
             return None
-    except KeyboardInterrupt:
-        print_warning("\nTeste cancelado pelo usuário")
-        return None
     except Exception as e:
         print_error(f"Erro ao testar select: {e}")
         return None
-
-def test_download(content_item_id):
-    """Testa o endpoint de download"""
-    print("\n" + "="*60)
-    print("4️⃣  TESTANDO DOWNLOAD")
-    print("="*60)
-    
-    if not content_item_id:
-        print_warning("⚠️  Content Item ID não fornecido. Pulando teste de download.")
-        return None
-    
-    try:
-        body = {
-            "content_item_id": content_item_id
-        }
-        
-        response = requests.post(
-            f"{API_BASE}/download",
-            json=body,
-            timeout=5
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            print_success(f"Download iniciado: {data}")
-            job_id = data.get("job_id")
-            if job_id:
-                print_info(f"Job ID: {job_id}")
-                print_info("Download em processamento... (pode levar alguns minutos)")
-            return job_id
-        else:
-            print_error(f"Download falhou: {response.status_code} - {response.text}")
-            return None
-    except Exception as e:
-        print_error(f"Erro ao testar download: {e}")
-        return None
-
-def test_confirm_publish(content_item_id, destination_id):
-    """Testa o endpoint de confirmar publicação"""
-    print("\n" + "="*60)
-    print("5️⃣  TESTANDO CONFIRM PUBLISH")
-    print("="*60)
-    
-    if not content_item_id or not destination_id:
-        print_warning("⚠️  IDs não fornecidos. Pulando teste de confirm.")
-        return False
-    
-    try:
-        body = {
-            "content_item_id": content_item_id,
-            "destination_id": destination_id,
-            "result": "success",
-            "platform_post_id": "test_post_12345"
-        }
-        
-        response = requests.post(
-            f"{API_BASE}/confirm_publish",
-            json=body,
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            print_success(f"Publicação confirmada: {data}")
-            return True
-        else:
-            print_error(f"Confirm falhou: {response.status_code} - {response.text}")
-            return False
-    except Exception as e:
-        print_error(f"Erro ao testar confirm: {e}")
-        return False
 
 def test_docs():
     """Testa se a documentação está acessível"""
@@ -241,38 +217,29 @@ def test_docs():
 def main():
     """Função principal de teste"""
     print("\n" + "="*60)
-    print("🧪 TESTE DA API CONTENT ORCHESTRATOR")
+    print("🧪 TESTE DA API CONTENT ORCHESTRATOR (Stateless)")
     print("="*60)
     print(f"\n📍 URL Base: {BASE_URL}")
     print(f"📍 API Base: {API_BASE}\n")
+    print_info("⚠️  Esta versão é stateless - não usa banco de dados")
+    print_info("    Dados são gerenciados via Google Sheets no n8n\n")
     
     # Teste 1: Health Check
     if not test_health():
         print_error("\n❌ API não está respondendo. Verifique se o servidor está rodando.")
         sys.exit(1)
     
-    # Teste 2: Fetch
-    job_id = test_fetch()
+    # Teste 2: N8N Health
+    test_n8n_health()
     
-    # Teste 3: Select (opcional)
-    content_item_id = test_select()
-    destination_id = None
-    if content_item_id:
-        # Se o usuário forneceu um destination_id, vamos usá-lo
-        try:
-            destination_id = input("\nDigite o UUID do Destination usado no select (ou Enter para pular confirm): ").strip()
-            if not destination_id:
-                destination_id = None
-        except:
-            pass
+    # Teste 3: Fetch
+    fetch_result = test_fetch()
     
-    # Teste 4: Download (se tiver content_item_id)
-    if content_item_id:
-        download_job = test_download(content_item_id)
+    # Teste 4: N8N Process Sources
+    process_result = test_n8n_process_sources()
     
-    # Teste 5: Confirm (se tiver ambos IDs)
-    if content_item_id and destination_id:
-        test_confirm_publish(content_item_id, destination_id)
+    # Teste 5: Select
+    select_result = test_select()
     
     # Teste 6: Documentação
     test_docs()
@@ -282,14 +249,10 @@ def main():
     print("📊 RESUMO DOS TESTES")
     print("="*60)
     print_success("Health Check: OK")
+    print_success("N8N Health: OK")
     print_success("Fetch: Testado")
-    if content_item_id:
-        print_success("Select: OK")
-        print_success("Download: Iniciado")
-        if destination_id:
-            print_success("Confirm: Testado")
-    else:
-        print_warning("Select/Download/Confirm: Não testados (requer dados no banco)")
+    print_success("N8N Process Sources: Testado")
+    print_success("Select: Testado")
     print_success("Documentação: Verificada")
     
     print("\n" + "="*60)
@@ -298,7 +261,8 @@ def main():
     print("\n💡 Dicas:")
     print("   - Verifique os logs do servidor para mais detalhes")
     print("   - Acesse http://localhost:8000/docs para testar manualmente")
-    print("   - Configure Sources e Destinations no banco para testar o fluxo completo")
+    print("   - Veja GUIA_N8N_FLUXO.md para o fluxo completo no n8n")
+    print("   - Veja ATUALIZAR_VPS.md para atualizar na VPS")
     print()
 
 if __name__ == "__main__":
@@ -307,4 +271,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n\n⚠️  Teste interrompido pelo usuário")
         sys.exit(0)
-

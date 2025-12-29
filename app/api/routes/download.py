@@ -1,29 +1,44 @@
-from fastapi import APIRouter, Depends, BackgroundTasks
+"""
+Endpoint de download - stateless
+Recebe dados do vídeo e faz download
+"""
+from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
-from uuid import UUID
-from sqlmodel.ext.asyncio.session import AsyncSession
-from app.api.dependencies import get_db_session
-from app.models.job import Job
-from app.services.background_tasks import process_download_job
+from typing import Optional
+from app.services.downloader.service import DownloaderService
 
 router = APIRouter()
 
 class DownloadRequest(BaseModel):
-    content_item_id: UUID
+    """Request para download"""
+    video_url: str
+    platform: str
+    external_video_id: str
+    group_name: Optional[str] = None
+    source_name: Optional[str] = None
 
 @router.post("")
 async def download_content(
     request: DownloadRequest,
-    background_tasks: BackgroundTasks,
-    session: AsyncSession = Depends(get_db_session)
+    background_tasks: BackgroundTasks
 ):
-    # Create Job
-    job = Job(type="download", status="pending")
-    session.add(job)
-    await session.commit()
-    await session.refresh(job)
+    """
+    Faz download de um vídeo
+    Organiza por grupo/fonte se fornecido
+    """
+    downloader = DownloaderService()
     
-    # Run in background
-    background_tasks.add_task(process_download_job, str(job.id), str(request.content_item_id))
+    # Executar em background
+    background_tasks.add_task(
+        downloader.download_video,
+        video_url=request.video_url,
+        platform=request.platform,
+        external_video_id=request.external_video_id,
+        group_name=request.group_name,
+        source_name=request.source_name
+    )
     
-    return {"job_id": job.id, "status": "queued"}
+    return {
+        "status": "queued",
+        "message": f"Download iniciado para {request.external_video_id}"
+    }

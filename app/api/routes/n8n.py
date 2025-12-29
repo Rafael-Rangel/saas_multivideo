@@ -1,102 +1,59 @@
 """
 Endpoints específicos para integração com n8n
-Processa todos os grupos (nichos) automaticamente
+API stateless - recebe dados do n8n, processa e retorna resultados
+Dados gerenciados via Google Sheets no n8n
 """
-from fastapi import APIRouter, Depends, BackgroundTasks
-from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
-from app.api.dependencies import get_db_session
-from app.models.job import Job
-from app.models.group import Group
-from app.models.source import Source
-from app.services.background_tasks import process_n8n_fetch_job
+from fastapi import APIRouter, BackgroundTasks
+from pydantic import BaseModel
+from typing import List, Optional
+from app.services.fetcher.service import FetcherService
 
 router = APIRouter()
 
-@router.post("/process-all-groups")
-async def process_all_groups(
-    background_tasks: BackgroundTasks,
-    session: AsyncSession = Depends(get_db_session)
+class SourceData(BaseModel):
+    """Dados de uma fonte vinda do n8n/Google Sheets"""
+    platform: str  # youtube, instagram, tiktok
+    external_id: str  # ID do canal/perfil
+    group_name: Optional[str] = None
+
+class ProcessRequest(BaseModel):
+    """Request para processar fontes"""
+    sources: List[SourceData]
+
+@router.post("/process-sources")
+async def process_sources(
+    request: ProcessRequest,
+    background_tasks: BackgroundTasks
 ):
     """
-    Endpoint principal para n8n
-    Processa todos os grupos (nichos) ativos
-    Verifica novas fontes e baixa vídeos organizados por grupo/fonte
+    Processa fontes recebidas do n8n
+    Retorna lista de vídeos encontrados
     """
-    # Create Job
-    job = Job(type="n8n_fetch_all", status="pending")
-    session.add(job)
-    await session.commit()
-    await session.refresh(job)
+    fetcher = FetcherService()
+    results = []
     
-    # Run in background
-    background_tasks.add_task(process_n8n_fetch_job, str(job.id))
+    for source_data in request.sources:
+        try:
+            videos = await fetcher.fetch_from_source_data(
+                platform=source_data.platform,
+                external_id=source_data.external_id,
+                group_name=source_data.group_name
+            )
+            results.extend(videos)
+        except Exception as e:
+            results.append({
+                "error": str(e),
+                "source": source_data.external_id,
+                "platform": source_data.platform
+            })
     
     return {
-        "job_id": job.id,
-        "status": "queued",
-        "message": "Processamento de todos os grupos iniciado"
+        "status": "completed",
+        "videos_found": len(results),
+        "videos": results
     }
 
-@router.get("/groups-summary")
-async def get_groups_summary(
-    session: AsyncSession = Depends(get_db_session)
-):
-    """
-    Retorna resumo de todos os grupos para o n8n
-    Útil para monitoramento e debugging
-    """
-    groups = await session.exec(
-        select(Group).where(Group.status == "active")
-    )
-    
-    result = []
-    for group in groups.all():
-        # Contar sources ativas
-        sources = await session.exec(
-            select(Source).where(
-                Source.group_id == group.id,
-                Source.status == "active"
-            )
-        )
-        sources_list = list(sources.all())
-        
-        # Contar destinations
-        from app.models.destination import Destination
-        destinations = await session.exec(
-            select(Destination).where(
-                Destination.group_id == group.id,
-                Destination.status == "active"
-            )
-        )
-        destinations_list = list(destinations.all())
-        
-        result.append({
-            "group_id": str(group.id),
-            "group_name": group.name,
-            "description": group.description,
-            "sources_count": len(sources_list),
-            "sources": [
-                {
-                    "id": str(s.id),
-                    "platform": s.platform,
-                    "external_id": s.external_id
-                }
-                for s in sources_list
-            ],
-            "destinations_count": len(destinations_list),
-            "destinations": [
-                {
-                    "id": str(d.id),
-                    "platform": d.platform,
-                    "account_id": d.account_id
-                }
-                for d in destinations_list
-            ]
-        })
-    
-    return {
-        "total_groups": len(result),
-        "groups": result
-    }
-
+@router.get("/health")
+async def health_check():
+    """Health check simples"""
+    return {"status": "ok", "message": "n8n integration ready"}

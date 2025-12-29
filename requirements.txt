@@ -1,8 +1,5 @@
 fastapi>=0.100.0
 uvicorn
-sqlmodel
-asyncpg
-psycopg2-binary
 python-dotenv
 pydantic>=2.0
 pydantic-settings

@@ -1,25 +1,43 @@
-from fastapi import APIRouter, Depends, HTTPException
+"""
+Endpoint de seleção - simplificado (stateless)
+Recebe dados do n8n e retorna conteúdo disponível
+"""
+from fastapi import APIRouter
 from pydantic import BaseModel
-from uuid import UUID
-from sqlmodel.ext.asyncio.session import AsyncSession
-from app.api.dependencies import get_db_session
-from app.services.selector import SelectorService
+from typing import Optional, List
 
 router = APIRouter()
 
 class SelectRequest(BaseModel):
-    destination_id: UUID
-    idempotency_key: UUID
+    """Request para selecionar conteúdo"""
+    destination_platform: str
+    destination_account_id: str
+    group_name: Optional[str] = None
+    # Dados de vídeos disponíveis vêm do n8n/Google Sheets
+    available_videos: List[dict]
 
 @router.post("")
-async def select_content(
-    request: SelectRequest,
-    session: AsyncSession = Depends(get_db_session)
-):
-    service = SelectorService(session)
-    content = await service.select_content(request.destination_id, request.idempotency_key)
+async def select_content(request: SelectRequest):
+    """
+    Seleciona conteúdo baseado em regras simples
+    Retorna vídeo selecionado ou None
+    """
+    # Lógica simples: retorna primeiro vídeo disponível
+    # n8n pode implementar lógica mais complexa
+    if not request.available_videos:
+        return {"message": "No content available", "selected": None}
     
-    if not content:
-        return {"message": "No content available"}
-        
-    return content
+    # Filtrar por grupo se fornecido
+    filtered = request.available_videos
+    if request.group_name:
+        filtered = [v for v in filtered if v.get("group_name") == request.group_name]
+    
+    if not filtered:
+        return {"message": "No content available for this group", "selected": None}
+    
+    # Retornar primeiro disponível
+    selected = filtered[0]
+    return {
+        "message": "Content selected",
+        "selected": selected
+    }

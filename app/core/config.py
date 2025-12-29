@@ -1,18 +1,12 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-from typing import Optional
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Content Orchestrator"
     API_V1_STR: str = "/v1"
     
-    # Supabase / Database
-    SUPABASE_URL: str
-    SUPABASE_KEY: str
-    DATABASE_URL: str
-    
-    # Storage
-    STORAGE_TYPE: str = "local" # or supabase
+    # Storage (local apenas - dados gerenciados via Google Sheets no n8n)
+    STORAGE_TYPE: str = "local"
     LOCAL_STORAGE_PATH: str = "downloads"
     
     class Config:

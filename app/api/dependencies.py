@@ -1,6 +1,5 @@
-from fastapi import Depends
-from sqlmodel.ext.asyncio.session import AsyncSession
-from app.core.database import get_session
-
-async def get_db_session(session: AsyncSession = Depends(get_session)):
-    return session
+"""
+Dependencies - simplificado (sem banco de dados)
+"""
+# Arquivo mantido para compatibilidade, mas não há mais dependências de banco
+pass

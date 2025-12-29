@@ -107,19 +107,21 @@ nano .env
 ## 📝 Exemplo de .env
 
 ```env
-SUPABASE_URL=https://tvloytursdkrwnfzwbtp.supabase.co
-SUPABASE_KEY=sb_secret_8ludQHaAn4delkAPLfkGpg_KPZCc3-k
-DATABASE_URL=postgresql+asyncpg://postgres:Rr%400924660102@db.tvloytursdkrwnfzwbtp.supabase.co:5432/postgres
-
+# Storage (local apenas - dados gerenciados via Google Sheets no n8n)
 STORAGE_TYPE=local
 LOCAL_STORAGE_PATH=/app/downloads
 
+# API
+PROJECT_NAME=Content Orchestrator
+API_V1_STR=/v1
+
+# Traefik (se usar)
 DOMAIN_NAME=postagensapp.shop
 ORCHESTRATOR_SUBDOMAIN=orchestrator
-SSL_EMAIL=stackflow.soft@gmail.com
+SSL_EMAIL=seu-email@exemplo.com
 ```
 
-**⚠️ Importante:** Na `DATABASE_URL`, substitua `@` por `%40` na senha!
+**⚠️ Importante:** Não precisa mais de Supabase! Tudo é gerenciado via Google Sheets no n8n.
 
 ---
 
