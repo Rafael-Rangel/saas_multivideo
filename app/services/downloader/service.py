@@ -44,14 +44,15 @@ class DownloaderService:
         cookies_path = os.path.abspath(cookies_path)
         
         # Determinar qual cliente usar baseado na disponibilidade de cookies
-        # Clientes que suportam cookies: web, mweb (mobile web)
-        # mweb geralmente funciona melhor que web sem JS runtime
+        # Estratégia: sempre tentar android primeiro (funciona melhor)
+        # Se android falhar, tentar outros clientes
         has_cookies = os.path.exists(cookies_path)
         
         if has_cookies:
-            # Com cookies, tentar mweb primeiro (funciona melhor), depois web
-            # mweb é mobile web e geralmente funciona melhor com cookies
-            player_clients = ['mweb', 'web']
+            # Com cookies disponíveis, tentar android primeiro (mais confiável)
+            # Se android falhar, tentar mweb e web que suportam cookies
+            # Nota: android não usa cookies mas funciona melhor na maioria dos casos
+            player_clients = ['android', 'mweb', 'web']
         else:
             # Sem cookies, tentar android primeiro (menos bloqueios), depois web
             player_clients = ['android', 'web']
