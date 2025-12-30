@@ -43,6 +43,17 @@ class DownloaderService:
         cookies_path = os.path.join(os.path.dirname(__file__), '../../data/cookies.txt')
         cookies_path = os.path.abspath(cookies_path)
         
+        # Determinar qual cliente usar baseado na disponibilidade de cookies
+        # android não suporta cookies, então se tiver cookies, usar apenas web
+        has_cookies = os.path.exists(cookies_path)
+        
+        if has_cookies:
+            # Com cookies, usar apenas web (que suporta cookies)
+            player_clients = ['web']
+        else:
+            # Sem cookies, tentar android primeiro (menos bloqueios), depois web
+            player_clients = ['android', 'web']
+        
         ydl_opts = {
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             'outtmpl': output_path.replace('.mp4', '.%(ext)s'),
@@ -50,7 +61,7 @@ class DownloaderService:
             # Opções para contornar bloqueios do YouTube
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android', 'web'],  # Tenta múltiplos clientes
+                    'player_client': player_clients,
                 }
             },
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -58,9 +69,9 @@ class DownloaderService:
         }
         
         # Adicionar cookies se o arquivo existir
-        if os.path.exists(cookies_path):
+        if has_cookies:
             ydl_opts['cookiefile'] = cookies_path
-            logger.info(f"Using cookies file: {cookies_path}")
+            logger.info(f"Using cookies file: {cookies_path} with web client")
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
