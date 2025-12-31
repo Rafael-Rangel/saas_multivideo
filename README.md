@@ -1,5 +1,7 @@
 # Content Orchestrator Backend
 
+> 📖 **Este é um documento de documentação** do sistema Content Orchestrator.
+
 Sistema completo de orquestração de conteúdo para automação de publicação multi-plataforma. Desenvolvido em Python com FastAPI, integrado ao Supabase (PostgreSQL) e controlado via n8n para workflows automatizados.
 
 ## 📋 Índice
@@ -54,9 +56,6 @@ O sistema é projetado para trabalhar em conjunto com **n8n**, que orquestra os 
 │  ┌───────────────────────────────┐  │
 │  │   API Endpoints               │  │
 │  │   - /v1/n8n/*                 │  │
-│  │   - /v1/groups/*              │  │
-│  │   - /v1/sources/*             │  │
-│  │   - /v1/destinations/*        │  │
 │  │   - /v1/fetch/*               │  │
 │  │   - /v1/select                │  │
 │  │   - /v1/download/*            │  │
@@ -494,92 +493,7 @@ Retorna resumo de todos os grupos, fontes e destinos.
 }
 ```
 
-### Endpoints de Grupos
-
-#### `GET /v1/groups`
-Lista todos os grupos.
-
-#### `POST /v1/groups`
-Cria um novo grupo.
-
-**Request:**
-```json
-{
-    "name": "Culinária",
-    "description": "Receitas e dicas culinárias",
-    "status": "active"
-}
-```
-
-#### `GET /v1/groups/{group_id}`
-Obtém um grupo específico.
-
-#### `PUT /v1/groups/{group_id}`
-Atualiza um grupo.
-
-#### `DELETE /v1/groups/{group_id}`
-Remove um grupo (soft delete: status = "inactive").
-
-### Endpoints de Fontes (Sources)
-
-#### `GET /v1/sources`
-Lista todas as fontes (com filtros opcionais).
-
-**Query Params:**
-- `group_id`: Filtrar por grupo
-- `platform`: Filtrar por plataforma
-- `status`: Filtrar por status
-
-#### `POST /v1/sources`
-Cria uma nova fonte.
-
-**Request:**
-```json
-{
-    "platform": "youtube",
-    "external_id": "@ShortsPodcuts",
-    "group_id": "550e8400-e29b-41d4-a716-446655440000",
-    "status": "active",
-    "license_status": "licensed"
-}
-```
-
-#### `GET /v1/sources/{source_id}`
-Obtém uma fonte específica.
-
-#### `PUT /v1/sources/{source_id}`
-Atualiza uma fonte.
-
-#### `DELETE /v1/sources/{source_id}`
-Remove uma fonte.
-
-### Endpoints de Destinos (Destinations)
-
-#### `GET /v1/destinations`
-Lista todos os destinos.
-
-#### `POST /v1/destinations`
-Cria um novo destino.
-
-**Request:**
-```json
-{
-    "platform": "youtube",
-    "account_id": "@MeuCanal",
-    "group_id": "550e8400-e29b-41d4-a716-446655440000",
-    "daily_limit": 1,
-    "status": "active"
-}
-```
-
-#### `GET /v1/destinations/{destination_id}`
-Obtém um destino específico.
-
-#### `PUT /v1/destinations/{destination_id}`
-Atualiza um destino.
-
-#### `DELETE /v1/destinations/{destination_id}`
-Remove um destino.
+**Nota:** Groups, Sources e Destinations são gerenciados via Google Sheets no n8n, não via API.
 
 ### Endpoints de Fetch
 
@@ -964,9 +878,11 @@ curl -X POST http://localhost:8002/v1/n8n/process-all-groups
 
 ## 📁 Estrutura do Projeto
 
+### Arquivos de Produção (Essenciais)
+
 ```
 content-orchestrator/
-├── app/
+├── app/                        # Código da aplicação (ESSENCIAL)
 │   ├── __init__.py
 │   ├── main.py                 # Aplicação FastAPI principal
 │   │
@@ -975,9 +891,6 @@ content-orchestrator/
 │   │   ├── dependencies.py    # Dependências (get_db_session)
 │   │   └── routes/            # Rotas da API
 │   │       ├── __init__.py
-│   │       ├── groups.py       # CRUD de grupos
-│   │       ├── sources.py      # CRUD de fontes
-│   │       ├── destinations.py  # CRUD de destinos
 │   │       ├── n8n.py          # Endpoints específicos para n8n
 │   │       ├── fetch.py        # Endpoint de fetch
 │   │       ├── select.py       # Endpoint de seleção
@@ -1004,27 +917,46 @@ content-orchestrator/
 │   │
 │   └── services/              # Lógica de negócio
 │       ├── __init__.py
-│       ├── background_tasks.py # Tasks assíncronas (fetch, download)
 │       ├── fetcher/
 │       │   └── service.py     # FetcherService (busca conteúdo)
-│       ├── selector.py         # SelectorService (seleção inteligente)
-│       ├── downloader/
-│       │   └── service.py     # DownloaderService (download de vídeos)
-│       ├── deduplicator.py     # Lógica de deduplicação
-│       └── reservation.py     # Lógica de reserva de conteúdo
+│       └── downloader/
+│           └── service.py     # DownloaderService (download usando yt-dlp)
 │
-├── data/                      # Dados persistentes (estado, cache)
+├── data/                      # Cookies e dados auxiliares (opcional)
 ├── downloads/                  # Vídeos baixados (organizados por grupo/fonte)
-├── logs/                       # Logs da aplicação
 │
 ├── .env                        # Variáveis de ambiente (não versionado)
 ├── .env.example                # Exemplo de .env
-├── Dockerfile                  # Imagem Docker
-├── docker-compose.yml          # Orquestração Docker
-├── requirements.txt            # Dependências Python
-├── README.md                   # Este arquivo
-└── test_api.py                 # Script de testes da API
+├── Dockerfile                  # Imagem Docker (ESSENCIAL)
+├── docker-compose.yml          # Orquestração Docker (ESSENCIAL)
+├── requirements.txt            # Dependências Python (ESSENCIAL)
+├── cookies.txt                 # Cookies para autenticação (opcional, pode ser gerado)
+└── README.md                   # Documentação principal
 ```
+
+### 📁 Diretórios e Arquivos Opcionais
+
+#### 📁 Diretórios (podem ser criados automaticamente)
+- `data/` - Usado para armazenar `cookies.txt` (opcional, apenas se usar autenticação com cookies)
+
+#### 📦 Arquivos Gerados Automaticamente (não devem estar no repositório)
+- `__pycache__/` - Cache do Python (deve estar no `.gitignore`)
+- Arquivos `.pyc` - Bytecode compilado (deve estar no `.gitignore`)
+
+### ✅ Arquivos Essenciais para Produção
+
+**Para produção, você precisa APENAS de:**
+- ✅ Diretório `app/` completo (código da aplicação)
+- ✅ `Dockerfile` (containerização)
+- ✅ `docker-compose.yml` (orquestração)
+- ✅ `requirements.txt` (dependências)
+- ✅ `.env` (configurações - não versionado)
+- ✅ `README.md` (documentação principal)
+
+**Opcional:**
+- `cookies.txt` - Necessário apenas se usar autenticação com cookies (pode ser gerado/fornecido separadamente)
+
+---
 
 ### Organização de Downloads
 
@@ -1053,41 +985,9 @@ downloads/
 
 ## 💡 Exemplos de Uso
 
-### 1. Configuração Inicial (via API)
+**Nota:** Configuração de Groups, Sources e Destinations é feita via Google Sheets no n8n, não via API.
 
-```bash
-# Criar grupo
-curl -X POST http://localhost:8000/v1/groups \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Culinária",
-    "description": "Receitas e dicas culinárias",
-    "status": "active"
-  }'
-
-# Criar fonte
-curl -X POST http://localhost:8000/v1/sources \
-  -H "Content-Type: application/json" \
-  -d '{
-    "platform": "youtube",
-    "external_id": "@ShortsPodcuts",
-    "group_id": "550e8400-e29b-41d4-a716-446655440000",
-    "status": "active"
-  }'
-
-# Criar destino
-curl -X POST http://localhost:8000/v1/destinations \
-  -H "Content-Type: application/json" \
-  -d '{
-    "platform": "youtube",
-    "account_id": "@MeuCanal",
-    "group_id": "550e8400-e29b-41d4-a716-446655440000",
-    "daily_limit": 1,
-    "status": "active"
-  }'
-```
-
-### 2. Processamento Automático (n8n)
+### 1. Processamento Automático (n8n)
 
 ```bash
 # Processar todos os grupos
@@ -1125,14 +1025,6 @@ curl -X POST http://localhost:8000/v1/download \
 
 # Verificar status do job
 curl http://localhost:8000/v1/jobs/{job_id}
-```
-
-### 5. Teste Completo (test_api.py)
-
-Execute o script de testes incluído:
-
-```bash
-python test_api.py
 ```
 
 ---
