@@ -21,6 +21,46 @@ class DownloaderService:
         """Serviço stateless - não precisa de sessão de banco"""
         pass
 
+    def _sanitize_filename(self, filename: str, max_length: int = 200) -> str:
+        """Limpa o nome do arquivo removendo caracteres inválidos"""
+        import re
+        # Remover caracteres especiais, manter apenas letras, números, espaços e alguns caracteres
+        filename = re.sub(r'[<>:"/\\|?*]', '', filename)
+        # Substituir múltiplos espaços por um único
+        filename = re.sub(r'\s+', ' ', filename)
+        # Remover espaços no início e fim
+        filename = filename.strip()
+        # Limitar tamanho
+        if len(filename) > max_length:
+            filename = filename[:max_length]
+        # Se ficar vazio, usar um nome padrão
+        if not filename:
+            filename = "video"
+        return filename
+
+    async def _get_video_title(self, video_url: str) -> Optional[str]:
+        """Busca o título do vídeo usando yt-dlp"""
+        try:
+            import yt_dlp
+            
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'skip_download': True,  # Não baixar, só pegar info
+            }
+            
+            # Tentar usar cookies se existirem
+            cookies_path = os.path.join(settings.LOCAL_STORAGE_PATH, '..', 'data', 'cookies.txt')
+            if os.path.exists(cookies_path):
+                ydl_opts['cookiefile'] = cookies_path
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(video_url, download=False)
+                return info.get('title')
+        except Exception as e:
+            logger.warning(f"Could not get video title: {e}")
+            return None
+
     async def download_video(
         self,
         video_url: str,
@@ -31,7 +71,7 @@ class DownloaderService:
     ):
         """
         Faz download de um vídeo usando múltiplas estratégias
-        Organiza por: downloads/{grupo}/{fonte}/{video_id}.mp4
+        Organiza por: downloads/{grupo}/{fonte}/{titulo_do_video}.mp4
         """
         # Organizar estrutura de pastas
         if group_name and source_name:
@@ -42,7 +82,19 @@ class DownloaderService:
             download_dir = os.path.join(settings.LOCAL_STORAGE_PATH, platform)
         
         os.makedirs(download_dir, exist_ok=True)
-        output_path = os.path.join(download_dir, f"{external_video_id}.mp4")
+        
+        # Buscar título do vídeo
+        video_title = await self._get_video_title(video_url)
+        
+        # Usar título se disponível, senão usar external_video_id
+        if video_title:
+            filename = self._sanitize_filename(video_title)
+            output_path = os.path.join(download_dir, f"{filename}.mp4")
+            logger.info(f"Using video title as filename: {filename}")
+        else:
+            # Fallback para external_video_id se não conseguir o título
+            output_path = os.path.join(download_dir, f"{external_video_id}.mp4")
+            logger.warning(f"Could not get video title, using external_video_id: {external_video_id}")
 
         # Verificar se arquivo já existe e está completo
         if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:  # Pelo menos 1KB
