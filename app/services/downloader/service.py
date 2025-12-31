@@ -1,8 +1,9 @@
 """
 Serviço de download usando múltiplas estratégias gratuitas
-1. Playwright para extrair URL (se disponível)
-2. yt-dlp via subprocess (se disponível)
-3. Requests + parsing manual (sempre disponível)
+1. yt-dlp como biblioteca Python (mais confiável)
+2. pytubefix (biblioteca Python pura)
+3. Playwright para extrair URL
+4. Requests + parsing manual (fallback)
 """
 import os
 import logging
@@ -48,9 +49,11 @@ class DownloaderService:
             logger.info(f"File already exists: {output_path} ({os.path.getsize(output_path)} bytes)")
             return {"status": "completed", "path": output_path}
 
-        # Tentar múltiplas estratégias em ordem
+        # Tentar múltiplas estratégias em ordem (da mais confiável para menos)
         strategies = [
-            ("yt-dlp", self._download_with_ytdlp),
+            ("yt-dlp-library", self._download_with_ytdlp_library),
+            ("pytubefix", self._download_with_pytubefix),
+            ("yt-dlp-subprocess", self._download_with_ytdlp_subprocess),
             ("Playwright", self._download_with_playwright),
             ("Requests", self._download_with_requests),
         ]
@@ -85,8 +88,100 @@ class DownloaderService:
         
         return {"status": "failed", "error": "All download strategies failed"}
 
-    async def _download_with_ytdlp(self, video_url: str, output_path: str):
-        """Estratégia 1: yt-dlp via subprocess (mais confiável)"""
+    async def _download_with_ytdlp_library(self, video_url: str, output_path: str):
+        """Estratégia 1: yt-dlp como biblioteca Python (MAIS CONFIÁVEL)"""
+        try:
+            import yt_dlp
+            
+            # Configurações do yt-dlp
+            ydl_opts = {
+                'format': 'best[ext=mp4]/best',
+                'outtmpl': output_path.replace('.mp4', '.%(ext)s'),
+                'quiet': True,
+                'no_warnings': True,
+                'noplaylist': True,
+            }
+            
+            # Tentar usar cookies se existirem
+            cookies_path = os.path.join(settings.LOCAL_STORAGE_PATH, '..', 'data', 'cookies.txt')
+            if os.path.exists(cookies_path):
+                ydl_opts['cookiefile'] = cookies_path
+                logger.info("Using cookies file")
+            
+            # Usar yt-dlp como biblioteca
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([video_url])
+            
+            # Verificar se arquivo foi criado
+            if os.path.exists(output_path):
+                return {"status": "completed", "path": output_path}
+            
+            # Procurar arquivo com extensão diferente
+            base_path = output_path.replace('.mp4', '')
+            for ext in ['.mp4', '.webm', '.mkv', '.m4a']:
+                test_path = base_path + ext
+                if os.path.exists(test_path):
+                    # Se não for mp4, renomear para mp4
+                    if ext != '.mp4':
+                        os.rename(test_path, output_path)
+                    return {"status": "completed", "path": output_path}
+            
+            return {"status": "failed", "error": "File not found after yt-dlp download"}
+                
+        except ImportError:
+            return {"status": "failed", "error": "yt-dlp library not installed"}
+        except Exception as e:
+            logger.error(f"yt-dlp library error: {e}")
+            return {"status": "failed", "error": f"yt-dlp error: {str(e)[:200]}"}
+
+    async def _download_with_pytubefix(self, video_url: str, output_path: str):
+        """Estratégia 2: pytubefix (biblioteca Python pura)"""
+        try:
+            from pytubefix import YouTube
+            
+            # Criar objeto YouTube
+            yt = YouTube(video_url)
+            
+            # Pegar melhor stream de vídeo
+            stream = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
+            
+            if not stream:
+                # Tentar streams adaptativos
+                video_stream = yt.streams.filter(only_video=True, file_extension='mp4').order_by('resolution').desc().first()
+                audio_stream = yt.streams.filter(only_audio=True).first()
+                
+                if video_stream and audio_stream:
+                    # Baixar vídeo e áudio separadamente (precisa ffmpeg para combinar)
+                    video_path = video_stream.download(output_path=os.path.dirname(output_path), filename=f"{os.path.basename(output_path).replace('.mp4', '')}_video.mp4")
+                    audio_path = audio_stream.download(output_path=os.path.dirname(output_path), filename=f"{os.path.basename(output_path).replace('.mp4', '')}_audio.mp4")
+                    
+                    # Combinar com ffmpeg (se disponível)
+                    try:
+                        import subprocess
+                        subprocess.run([
+                            'ffmpeg', '-i', video_path, '-i', audio_path,
+                            '-c:v', 'copy', '-c:a', 'copy', '-y', output_path
+                        ], check=True, capture_output=True)
+                        os.remove(video_path)
+                        os.remove(audio_path)
+                        return {"status": "completed", "path": output_path}
+                    except:
+                        return {"status": "failed", "error": "ffmpeg not available for merging"}
+                else:
+                    return {"status": "failed", "error": "No suitable streams found"}
+            else:
+                # Download direto
+                stream.download(output_path=os.path.dirname(output_path), filename=os.path.basename(output_path))
+                return {"status": "completed", "path": output_path}
+                
+        except ImportError:
+            return {"status": "failed", "error": "pytubefix not installed"}
+        except Exception as e:
+            logger.error(f"pytubefix error: {e}")
+            return {"status": "failed", "error": f"pytubefix error: {str(e)[:200]}"}
+
+    async def _download_with_ytdlp_subprocess(self, video_url: str, output_path: str):
+        """Estratégia 3: yt-dlp via subprocess (fallback)"""
         try:
             import subprocess
             import asyncio
@@ -113,6 +208,11 @@ class DownloaderService:
                 '--no-warnings',
                 '--quiet'
             ]
+            
+            # Adicionar cookies se existirem
+            cookies_path = os.path.join(settings.LOCAL_STORAGE_PATH, '..', 'data', 'cookies.txt')
+            if os.path.exists(cookies_path):
+                cmd.extend(['--cookies', cookies_path])
             
             process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -142,11 +242,11 @@ class DownloaderService:
         except FileNotFoundError:
             return {"status": "failed", "error": "yt-dlp not installed"}
         except Exception as e:
-            logger.error(f"yt-dlp error: {e}")
+            logger.error(f"yt-dlp subprocess error: {e}")
             return {"status": "failed", "error": f"yt-dlp error: {str(e)}"}
 
     async def _download_with_playwright(self, video_url: str, output_path: str):
-        """Estratégia 2: Playwright para extrair URL e fazer download"""
+        """Estratégia 4: Playwright para extrair URL e fazer download"""
         try:
             from playwright.async_api import async_playwright
             
@@ -260,7 +360,7 @@ class DownloaderService:
             return {"status": "failed", "error": f"Playwright error: {str(e)}"}
 
     async def _download_with_requests(self, video_url: str, output_path: str):
-        """Estratégia 3: Requests + parsing manual (100% gratuito, sem dependências externas)"""
+        """Estratégia 5: Requests + parsing manual (100% gratuito, sem dependências externas)"""
         try:
             import requests
             

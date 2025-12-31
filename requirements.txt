@@ -7,3 +7,5 @@ httpx
 playwright>=1.40.0
 tenacity
 requests
+yt-dlp>=2023.12.30
+pytubefix>=6.0.0
