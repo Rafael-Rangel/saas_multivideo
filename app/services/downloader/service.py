@@ -40,12 +40,26 @@ class DownloaderService:
         )
         filename = emoji_pattern.sub('', filename)
         
+        # Mapear caracteres especiais comuns
+        char_map = {
+            'ª': 'a', 'º': 'o', '°': 'o',  # Ordinais
+            'ç': 'c', 'Ç': 'c',
+            'ñ': 'n', 'Ñ': 'n',
+        }
+        for old, new in char_map.items():
+            filename = filename.replace(old, new)
+        
         # Normalizar Unicode (NFD = Normalized Form Decomposed)
         # Isso separa acentos dos caracteres
         filename = unicodedata.normalize('NFD', filename)
         
-        # Remover acentos (tudo que não é ASCII básico)
-        filename = ''.join(char for char in filename if unicodedata.category(char) != 'Mn')
+        # Remover acentos e caracteres especiais (tudo que não é ASCII básico)
+        # Mantém apenas letras, números e alguns caracteres básicos
+        filename = ''.join(
+            char for char in filename 
+            if unicodedata.category(char) != 'Mn'  # Remove acentos
+            and (char.isalnum() or char in ' _-')  # Mantém letras, números, espaços, hífens e underscores
+        )
         
         # Converter para minúsculas
         filename = filename.lower()
@@ -53,7 +67,7 @@ class DownloaderService:
         # Remover caracteres inválidos para nome de arquivo
         filename = re.sub(r'[<>:"/\\|?*]', '', filename)
         
-        # Substituir espaços e caracteres especiais por underscore
+        # Substituir espaços, hífens e pontos por underscore
         filename = re.sub(r'[\s\-_\.]+', '_', filename)
         
         # Remover underscores múltiplos
