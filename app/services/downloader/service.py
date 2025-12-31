@@ -100,31 +100,76 @@ class DownloaderService:
                 except Exception as e:
                     logger.debug(f"Method 1 failed: {e}")
                 
-                # Método 2: Extrair do JavaScript/network
+                # Método 2: Interceptar requisições de mídia ANTES de navegar
                 if not video_url_direct:
                     try:
-                        # Interceptar requisições de mídia
                         video_urls = []
                         
                         async def handle_response(response):
                             url = response.url
-                            # Procurar por URLs de vídeo
-                            if any(ext in url for ext in ['.mp4', '.webm', 'videoplayback', 'googlevideo.com']):
-                                if 'mime=video' in url or 'itag=' in url:
+                            # Procurar por URLs de vídeo do YouTube
+                            if 'googlevideo.com' in url and ('videoplayback' in url or 'mime=video' in url):
+                                if 'itag=' in url:
                                     video_urls.append(url)
                         
+                        # Adicionar listener antes de navegar
                         page.on('response', handle_response)
                         
-                        # Recarregar página para capturar requisições
-                        await page.reload(wait_until='networkidle', timeout=60000)
-                        await page.wait_for_timeout(5000)
+                        # Aguardar mais tempo para capturar requisições
+                        await page.wait_for_timeout(10000)
+                        
+                        # Tentar interagir com o player para forçar carregamento
+                        try:
+                            # Clicar no vídeo para iniciar reprodução
+                            video_selector = 'video'
+                            if await page.query_selector(video_selector):
+                                await page.click(video_selector)
+                                await page.wait_for_timeout(3000)
+                        except:
+                            pass
                         
                         if video_urls:
-                            # Pegar melhor qualidade (maior itag ou resolução)
+                            # Pegar melhor qualidade (ordenar por itag)
+                            video_urls.sort(key=lambda x: int(x.split('itag=')[1].split('&')[0]) if 'itag=' in x else 0, reverse=True)
                             video_url_direct = video_urls[0]
                             logger.info(f"Found video URL from network: {video_url_direct[:100]}...")
                     except Exception as e:
                         logger.debug(f"Method 2 failed: {e}")
+                
+                # Método 3: Extrair do JavaScript da página
+                if not video_url_direct:
+                    try:
+                        # Executar JavaScript para extrair informações do player
+                        video_info = await page.evaluate("""
+                            () => {
+                                // Tentar pegar informações do player
+                                const player = document.querySelector('video');
+                                if (player && player.src) {
+                                    return player.src;
+                                }
+                                
+                                // Tentar pegar do ytInitialPlayerResponse
+                                if (window.ytInitialPlayerResponse) {
+                                    const formats = window.ytInitialPlayerResponse.streamingData;
+                                    if (formats && formats.formats) {
+                                        const bestFormat = formats.formats
+                                            .filter(f => f.mimeType && f.mimeType.includes('video'))
+                                            .sort((a, b) => (b.width || 0) - (a.width || 0))[0];
+                                        if (bestFormat && bestFormat.url) {
+                                            return bestFormat.url;
+                                        }
+                                    }
+                                }
+                                
+                                return null;
+                            }
+                        """)
+                        
+                        if video_info:
+                            video_url_direct = video_info
+                            logger.info("Found video URL from JavaScript")
+                    except Exception as e:
+                        logger.debug(f"Method 3 failed: {e}")
                 
                 # Método 3: Usar yt-dlp via subprocess como fallback
                 if not video_url_direct:
