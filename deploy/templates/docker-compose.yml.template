@@ -1,0 +1,148 @@
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik
+    restart: always
+    command:
+      - "--api=true"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.mytlschallenge.acme.tlschallenge=true"
+      - "--certificatesresolvers.mytlschallenge.acme.email=${SSL_EMAIL}"
+      - "--certificatesresolvers.mytlschallenge.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - traefik_data:/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  n8n:
+    user: "1000:1000"
+    image: n8n-ffmpeg
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.n8n.rule=Host(`${SUBDOMAIN}.${DOMAIN_NAME}`)
+      - traefik.http.routers.n8n.entrypoints=web,websecure
+      - traefik.http.routers.n8n.tls=true
+      - traefik.http.routers.n8n.tls.certresolver=mytlschallenge
+      - traefik.http.services.n8n.loadbalancer.server.port=5678
+    environment:
+      - N8N_HOST=${SUBDOMAIN}.${DOMAIN_NAME}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - NODE_ENV=production
+      - WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
+      - N8N_ALLOW_EXECUTE_COMMAND=true
+      - N8N_ALLOW_LOCAL_FILES=true
+    ports:
+      - "127.0.0.1:5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./content-orchestrator/downloads:/content-downloads
+
+  postiz:
+    image: ghcr.io/gitroomhq/postiz-app:latest
+    container_name: postiz
+    restart: always
+    expose:
+      - "5000"
+    environment:
+      MAIN_URL: "https://${POSTIZ_SUBDOMAIN}.${DOMAIN_NAME}"
+      FRONTEND_URL: "https://${POSTIZ_SUBDOMAIN}.${DOMAIN_NAME}"
+      NEXT_PUBLIC_BACKEND_URL: "https://${POSTIZ_SUBDOMAIN}.${DOMAIN_NAME}/api"
+      BACKEND_INTERNAL_URL: "http://postiz:3000"
+      JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: "postgresql://postiz-user:postiz-password@postiz-postgres:5432/postiz-db-local"
+      REDIS_URL: "redis://postiz-redis:6379"
+      IS_GENERAL: "true"
+      DISABLE_REGISTRATION: "false"
+      NOT_SECURED: "false"
+      STORAGE_PROVIDER: "local"
+      UPLOAD_DIRECTORY: "/uploads"
+      NEXT_PUBLIC_UPLOAD_DIRECTORY: "/uploads"
+      TIKTOK_CLIENT_ID: ${TIKTOK_CLIENT_ID}
+      TIKTOK_CLIENT_SECRET: ${TIKTOK_CLIENT_SECRET}
+      INSTAGRAM_APP_ID: ${INSTAGRAM_APP_ID}
+      INSTAGRAM_APP_SECRET: ${INSTAGRAM_APP_SECRET}
+      YOUTUBE_CLIENT_ID: ${YOUTUBE_CLIENT_ID}
+      YOUTUBE_CLIENT_SECRET: ${YOUTUBE_CLIENT_SECRET}
+      GOOGLE_CLIENT_ID: ${YOUTUBE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${YOUTUBE_CLIENT_SECRET}
+    volumes:
+      - postiz-config:/config
+      - postiz-uploads:/uploads
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.postiz.rule=Host(`${POSTIZ_SUBDOMAIN}.${DOMAIN_NAME}`)
+      - traefik.http.routers.postiz.entrypoints=web,websecure
+      - traefik.http.routers.postiz.tls=true
+      - traefik.http.routers.postiz.tls.certresolver=mytlschallenge
+      - traefik.http.services.postiz.loadbalancer.server.port=5000
+    depends_on:
+      - postiz-postgres
+      - postiz-redis
+
+  postiz-postgres:
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: postiz-password
+      POSTGRES_USER: postiz-user
+      POSTGRES_DB: postiz-db-local
+    volumes:
+      - postgres-volume:/var/lib/postgresql/data
+
+  postiz-redis:
+    image: redis:7.2
+    restart: always
+    volumes:
+      - postiz-redis-data:/data
+
+  content-orchestrator:
+    user: "1000:1000"
+    build:
+      context: ./content-orchestrator
+      dockerfile: Dockerfile
+    container_name: content-orchestrator
+    restart: always
+    env_file: ./content-orchestrator/.env
+    environment:
+      - STORAGE_TYPE=local
+      - LOCAL_STORAGE_PATH=/app/downloads
+    volumes:
+      - ./content-orchestrator/downloads:/app/downloads
+      - ./content-orchestrator/logs:/app/logs
+      - ./content-orchestrator/data:/app/data
+    ports:
+      - "127.0.0.1:8002:8000"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.content-orchestrator.rule=Host(`orchestrator.${DOMAIN_NAME}`)
+      - traefik.http.routers.content-orchestrator.entrypoints=web,websecure
+      - traefik.http.routers.content-orchestrator.tls=true
+      - traefik.http.routers.content-orchestrator.tls.certresolver=mytlschallenge
+      - traefik.http.services.content-orchestrator.loadbalancer.server.port=8000
+    command: "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  traefik_data:
+    external: false
+  n8n_data:
+    external: false
+  postgres-volume:
+  postiz-config:
+  postiz-uploads:
+  postiz-redis-data:
+
